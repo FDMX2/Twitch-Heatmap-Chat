@@ -6,6 +6,8 @@ How it works:
   2. Press connect.
   3. Wait till messages from the channels chat arrive and get sumed up.
 
+You can add a channelname at the end of the url with # to autoconnect to it like :
+  index.html#channelname
 
 It uses:
   - bootstrap (https://getbootstrap.com/) for design 
