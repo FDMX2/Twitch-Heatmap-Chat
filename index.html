@@ -29,13 +29,12 @@
             margin-bottom: 5px;
         }
     </style>
-
   </head>
 
   <body>
-
     <div id="mainDiv">
-        <h1>Twitch Heatmap Chat</h1>
+        <h1 style="display: inline-block;">Twitch Heatmap Chat</h1>
+        <a style="display: inline-block;" href="https://github.com/FDMX2/Twitch-Heatmap-Chat"><h5>?</h5></a>
         <div  class="input-group mb-3">
             <input id="channelName" type="text" class="form-control" placeholder="Channel name" aria-describedby="basic-addon2">
             <div class="input-group-append">
@@ -131,19 +130,22 @@
                 endRefresh();
             });
 
+            applySettings();
         });
 
 
-        $("body").on('click touch', "#switchConnection", function(){
+        $("body").on('click touch', "#switchConnection", switchConnection);
 
+        function switchConnection(){
             if(client.connected){
                 client.disconnect();
             } else {
                 channel = $("#channelName").val();
+                console.log("connected to channel " + channel);
                 client.getOptions().channels = [`#${channel}`];
                 client.connect();
             }
-        });
+        }
 
         // ticks == unix time in milliseconds
         function handleMessage(userId, message, ticks){
@@ -152,7 +154,6 @@
 
             //if(showDebugInfo)
             //    console.log( userId + " wrote " + message);
-
 
             var compareString = userId + message;
 
@@ -272,6 +273,15 @@
             $('#messagesTexts').html(contentTexts);
         }
 
+        function applySettings(){
+            var queryString = window.location.href.split("#");
+            if(queryString.length < 2)
+                return;
+
+            var channelName = queryString[1];
+            $("#channelName").val(channelName);
+            switchConnection();
+        }
     </script>
   </body>
 </html>
