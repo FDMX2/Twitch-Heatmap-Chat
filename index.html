@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://unpkg.com/twitch-js@1.2.5/dist/twitch-js.min.js"></script>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css">
+
+    <title>Twitch Heatmap Chat</title>
+    <meta name="description" content="A simple passive twitch chat vote mechanism made by dkc2_pro">
+
+    <style>
+        #mainDiv{
+            width:800px;
+            resize : horizontal;
+            overflow: auto;
+            margin:15px;
+        }
+        .messageText {
+            margin-left: 5px;
+            min-width: 80px;
+            height: 21px;
+        }
+        #progressBars{
+            flex-grow: 1;
+        }
+        .progress {
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+    </style>
+
+  </head>
+
+  <body>
+
+    <div id="mainDiv">
+        <h1>Twitch Heatmap Chat</h1>
+        <div  class="input-group mb-3">
+            <input id="channelName" type="text" class="form-control" placeholder="Channel name" aria-describedby="basic-addon2">
+            <div class="input-group-append">
+                <button id="switchConnection" class="btn btn-success" type="button">Connect</button>
+            </div>
+        </div>
+        <div id="heatMap" >
+            <div style="display: flex;flex-direction: row;">
+                <div id="progressBars">
+                    The amount of messages will be shown here after connecting.
+                </div>
+                <div id="messagesTexts">
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // time between refreshs in milliseconds
+        const refreshTime = 1000;
+        // after this time messages will be removed
+        const timeBetweenUpdates = 90000; // 1:30 minutes
+        // longer messages will be ignored
+        const maxMessageLength = 10; // prevent copy paste spam
+        // minimum amounts of occurancies of a message to be shown
+        const messageAmountThreshold = 2;
+        // true will output debug info in browser console
+        const showDebugInfo = false;
+        // max amount of messages shown with the progress bars
+        const maxShownMessages = 5;
+
+
+        var channel = '';
+        var client = null;
+        var bufferedMessages = new Map();
+        var lastUpdateTime = null;
+        var updateTimer = null;
+
+
+        $(document).ready(function(){
+
+            const TwitchJS = window.TwitchJS;
+
+            var options = {
+                options: {
+                    //debug: true
+                },
+                connection: {
+                    reconnect: true,
+                    secure: true
+                },
+                channels: [`#${channel}`]
+            };
+
+            client = new TwitchJS.client(options);
+
+            client.on('chat', function(channel, userstate, message, self) {
+                handleMessage(userstate['user-id'], message, userstate['tmi-sent-ts']);
+                //console.info({ channel, userstate, message, self });
+            });
+
+            client.on('connected', function(address, port) {
+                if(showDebugInfo)
+                    console.log("connected to: " + channel);
+
+                var btn = $("#switchConnection");
+                btn.removeClass("btn-success");
+                btn.addClass("btn-danger");
+                btn.text("disconnect");
+
+                $("#channelName").prop( "disabled", true );
+
+                client.connected = true;
+                lastUpdateTime = new Date().getTime();
+                startRefresh();
+            });
+
+            client.on('disconnected', function(address, port) {
+                if(showDebugInfo)
+                    console.log("disconnected from: " + channel);
+
+                isClientConnected = false;
+                var btn = $("#switchConnection");
+                btn.removeClass("btn-danger");
+                btn.addClass("btn-success");
+                btn.text("connect");
+
+                $("#channelName").prop( "disabled", false);
+
+                client.connected = false;
+                lastUpdateTime = null;
+                endRefresh();
+            });
+
+        });
+
+
+        $("body").on('click touch', "#switchConnection", function(){
+
+            if(client.connected){
+                client.disconnect();
+            } else {
+                channel = $("#channelName").val();
+                client.getOptions().channels = [`#${channel}`];
+                client.connect();
+            }
+        });
+
+        // ticks == unix time in milliseconds
+        function handleMessage(userId, message, ticks){
+            if(message.length > maxMessageLength)
+                return;
+
+            //if(showDebugInfo)
+            //    console.log( userId + " wrote " + message);
+
+
+            var compareString = userId + message;
+
+            // prevents multiple entries
+            bufferedMessages.set(
+                compareString,
+                {
+                    //"userId" : userId,
+                    "message" : message,
+                    "ticks" : ticks
+                }
+            );
+        }
+
+        function startRefresh(){
+            updateTimer = window.setInterval(function(){
+                updateMessages();
+            }, refreshTime);
+            if(showDebugInfo)
+                console.log("start refreshing every " + refreshTime + " ms");
+        }
+
+        function endRefresh(){
+            clearInterval(updateTimer);
+            updateTimer = null;
+            bufferedMessages.clear();
+            if(showDebugInfo)
+                console.log("end refreshing");
+        }
+
+        // clean up messagebuffer periodically (js is always threadsafe)
+        function updateMessages(){
+            lastUpdateTime = new Date().getTime();
+            var messageCounts = new Map();
+            var keysToRemove = [];
+            var messages = [];
+
+            if(showDebugInfo)
+                console.log("buffered messages: " + bufferedMessages.size);
+
+            // sum up
+            for (const [key,value] of bufferedMessages){
+                if(lastUpdateTime - value.ticks > timeBetweenUpdates){
+                    keysToRemove.push(key);
+                } else {
+                    var val = messageCounts.get(value.message);
+
+                    if (typeof val === "undefined") {
+                        messageCounts.set(value.message, 1);
+                    } else {
+                        messageCounts.set(value.message, val + 1);
+                    }
+                }
+            }
+
+            if(showDebugInfo)
+                console.log("removing messages: " + keysToRemove.length);
+
+            // cleanup
+            keysToRemove.forEach(key => {
+                bufferedMessages.delete(key);
+            });
+
+            // create result
+            for (const [key,value] of messageCounts){
+                if(value > messageAmountThreshold)
+                    messages.push({
+                        "content" : key,
+                        "amount" : value
+                    });
+            }
+            messages.sort(function(a, b){
+                return b.amount-a.amount;
+            });
+
+            refreshGui(messages);
+        }
+
+        function refreshGui(messageCounts){
+            if(showDebugInfo){
+                //console.clear();
+                console.log("different messages: " + messageCounts.length);
+                messageCounts.forEach(element => {
+                    console.log(element.content + " : " + element.amount);
+                });
+            }
+            //console.log(messageCounts);
+
+            if(!messageCounts || messageCounts.length == 0){
+                $('#progressBars').html('');
+                $('#messagesTexts').html('');
+                return;
+            }
+
+            var contentBars = '';
+            var contentTexts = '';
+
+            var maxVal = maxShownMessages < messageCounts.length ? maxShownMessages : messageCounts.length;
+
+            for (var i = 0; i < maxVal; i++) {
+                const msg = messageCounts[i];
+                var percentage = 100;
+                if(i > 0)
+                    percentage = (msg.amount / messageCounts[0].amount) * 100;
+
+                const template =
+                    '<div class="progress">' +
+                        '<div class="progress-bar ' + (i == 0 ? 'bg-danger' : 'bg-info')+ '" role="progressbar" style="width: ' + percentage + '%" aria-valuenow="' + percentage+ '" aria-valuemin="0" aria-valuemax="100">' + msg.amount + '</div>' +
+                    '</div>';
+                contentBars +=template;
+
+                contentTexts += '<div class="messageText">' + msg.content + '</div>';
+
+            }
+
+            $('#progressBars').html(contentBars);
+            $('#messagesTexts').html(contentTexts);
+        }
+
+    </script>
+  </body>
+</html>
