@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
     <script src="https://unpkg.com/twitch-js@1.2.5/dist/twitch-js.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mustache.js/3.0.1/mustache.min.js"></script>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.3/css/bootstrap.min.css">
 
     <title>Twitch Heatmap Chat</title>
@@ -32,6 +33,7 @@
   </head>
 
   <body>
+
     <div id="mainDiv">
         <h1 style="display: inline-block;">Twitch Heatmap Chat</h1>
         <a style="display: inline-block;" href="https://github.com/FDMX2/Twitch-Heatmap-Chat"><h5>?</h5></a>
@@ -50,10 +52,28 @@
                 </div>
             </div>
         </div>
+        <div>
+            <button id="clear" style="display: none;" class="btn" type="button">clear</button>
+        </div>
     </div>
+
+    <!-- Templates -->
+    <script id="template_progressbar" type="x-tmpl-mustache">
+        <div class="progress">
+            <div class="progress-bar {{colorType}}" role="progressbar" style="width: {{percentage}}%" aria-valuenow="{{percentage}}" aria-valuemin="0" aria-valuemax="100">{{msg.amount}}</div>
+        </div>
+    </script>
+
+    <script id="template_message" type="x-tmpl-mustache">
+        <div class="messageText">
+            {{msg.content}}
+        </div>
+    </script>
 
 
     <script>
+        // Settings
+
         // time between refreshs in milliseconds
         const refreshTime = 1000;
         // after this time messages will be removed
@@ -68,92 +88,70 @@
         const maxShownMessages = 5;
 
 
+        // variables
         var channel = '';
         var client = null;
         var bufferedMessages = new Map();
         var lastUpdateTime = null;
         var updateTimer = null;
+        var templates = null;
 
 
         $(document).ready(function(){
 
-            const TwitchJS = window.TwitchJS;
+            applySettings();
 
-            var options = {
+            templates = {
+                "progessbar" : $('#template_progressbar').html(),
+                "message" : $('#template_message').html()
+            };
+            // optional, speeds up future uses
+            Mustache.parse(templates.progessbar);
+            Mustache.parse(templates.message);
+        });
+
+
+        $("body").on('click touch', "#switchConnection", switchConnection);
+        $("body").on('click touch', "#clear", clearMessages);
+
+        function getClientOptions(channelName){
+            var cnames = channelName.split(";");
+            cnames.forEach(elem => {
+                return '#' + elem;
+            });
+
+            return {
                 options: {
-                    //debug: true
+                    debug: false
                 },
                 connection: {
                     reconnect: true,
                     secure: true
                 },
-                channels: [`#${channel}`]
+                channels: cnames
             };
-
-            client = new TwitchJS.client(options);
-
-            client.on('chat', function(channel, userstate, message, self) {
-                handleMessage(userstate['user-id'], message, userstate['tmi-sent-ts']);
-                //console.info({ channel, userstate, message, self });
-            });
-
-            client.on('connected', function(address, port) {
-                if(showDebugInfo)
-                    console.log("connected to: " + channel);
-
-                var btn = $("#switchConnection");
-                btn.removeClass("btn-success");
-                btn.addClass("btn-danger");
-                btn.text("disconnect");
-
-                $("#channelName").prop( "disabled", true );
-
-                client.connected = true;
-                lastUpdateTime = new Date().getTime();
-                startRefresh();
-            });
-
-            client.on('disconnected', function(address, port) {
-                if(showDebugInfo)
-                    console.log("disconnected from: " + channel);
-
-                isClientConnected = false;
-                var btn = $("#switchConnection");
-                btn.removeClass("btn-danger");
-                btn.addClass("btn-success");
-                btn.text("connect");
-
-                $("#channelName").prop( "disabled", false);
-
-                client.connected = false;
-                lastUpdateTime = null;
-                endRefresh();
-            });
-
-            applySettings();
-        });
-
-
-        $("body").on('click touch', "#switchConnection", switchConnection);
+        }
 
         function switchConnection(){
-            if(client.connected){
-                client.disconnect();
+            if(client){
+                disconnectChat();
             } else {
-                channel = $("#channelName").val();
-                console.log("connected to channel " + channel);
-                client.getOptions().channels = [`#${channel}`];
-                client.connect();
+                connectChat();
             }
         }
 
         // ticks == unix time in milliseconds
-        function handleMessage(userId, message, ticks){
+        function handleMessage(channel, userstate, message, self){
+
+            var userId = userstate['user-id'];
+            var ticks = userstate['tmi-sent-ts'];
+
+            if(showDebugInfo)
+                console.log( userId + " wrote " + message);
+
+
             if(message.length > maxMessageLength)
                 return;
-
-            //if(showDebugInfo)
-            //    console.log( userId + " wrote " + message);
 
             var compareString = userId + message;
 
@@ -166,7 +164,49 @@
                     "ticks" : ticks
                 }
             );
+
+
         }
+
+        function handleConnect(address, port){
+            if(showDebugInfo)
+                console.log("connected to: " + channel);
+
+            var btn = $("#switchConnection");
+            btn.removeClass("btn-success");
+            btn.addClass("btn-danger");
+            btn.text("disconnect");
+
+            $("#channelName").prop( "disabled", true );
+            $("#clear").show();
+
+            lastUpdateTime = new Date().getTime();
+            startRefresh();
+        }
+
+        function handleDisconnect(address, port){
+            client.removeAllListeners();
+            client = null;
+
+            console.log("disconnected");
+
+            if(showDebugInfo)
+                console.log("disconnected from: " + channel);
+
+            isClientConnected = false;
+            var btn = $("#switchConnection");
+            btn.removeClass("btn-danger");
+            btn.addClass("btn-success");
+            btn.text("connect");
+
+            $("#channelName").prop( "disabled", false);
+            $("#clear").hide();
+
+            lastUpdateTime = null;
+            endRefresh();
+
+        }
+
 
         function startRefresh(){
             updateTimer = window.setInterval(function(){
@@ -182,6 +222,39 @@
             bufferedMessages.clear();
             if(showDebugInfo)
                 console.log("end refreshing");
+        }
+
+        function registerClientHandler(client){
+
+            client.on('connected', handleConnect);
+            client.on('disconnected', handleDisconnect);
+            client.on('chat', handleMessage);
+        }
+
+        function unregisterClientHandler(client){
+            client.off('chat', handleMessage);
+            client.off('connected', handleConnect);
+            client.off('disconnected', handleDisconnect);
+        }
+
+        function connectChat(){
+            channel = $("#channelName").val();
+            client = new window.TwitchJS.client(getClientOptions(channel));
+            registerClientHandler(client);
+
+
+            console.log("connecting to channel " + channel);
+
+            client.connect();
+        }
+
+        function disconnectChat(){
+            client.disconnect();
+        }
+
+        function clearMessages(){
+            bufferedMessages.clear();
+            refreshGui([]);
         }
 
         // clean up messagebuffer periodically (js is always threadsafe)
@@ -219,7 +292,7 @@
 
             // create result
             for (const [key,value] of messageCounts){
-                if(value > messageAmountThreshold)
+                if(value >= messageAmountThreshold)
                     messages.push({
                         "content" : key,
                         "amount" : value
@@ -259,13 +332,14 @@
                 if(i > 0)
                     percentage = (msg.amount / messageCounts[0].amount) * 100;
 
-                const template =
-                    '<div class="progress">' +
-                        '<div class="progress-bar ' + (i == 0 ? 'bg-danger' : 'bg-info')+ '" role="progressbar" style="width: ' + percentage + '%" aria-valuenow="' + percentage+ '" aria-valuemin="0" aria-valuemax="100">' + msg.amount + '</div>' +
-                    '</div>';
-                contentBars +=template;
+                var con = {
+                    "percentage" : percentage,
+                    "colorType" : (i == 0 ? 'bg-danger' : 'bg-info'),
+                    "msg" : msg
+                }
 
-                contentTexts += '<div class="messageText">' + msg.content + '</div>';
+                contentBars += Mustache.render(templates.progessbar, con);
+                contentTexts += Mustache.render(templates.message, con);
 
             }
 
