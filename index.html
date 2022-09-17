@@ -11,16 +11,33 @@
     <meta name="description" content="A simple passive twitch chat vote mechanism made by dkc2_pro">
 
     <style>
+        body {
+            background: rgb(30, 30, 30);
+            color: rgb(177, 212, 212);
+        }        
         #mainDiv{
-            width:800px;
+            width:100%;
             resize : horizontal;
             overflow: auto;
-            margin:15px;
+            padding:15px;
+        }
+        #channelName {
+            background: rgb(30, 30, 30);
+            color: rgb(177, 212, 212);
         }
         .messageText {
-            margin-left: 5px;
+            margin-left: 2px;
+            padding-left: 3px;
+            padding-right: 3px;
             min-width: 80px;
-            height: 21px;
+            height: 1rem;
+            background: white;
+            border-radius: 5px;
+            margin-top: 5px;
+            line-height: 14px;
+        }
+        .messageText.dark {
+            background: rgb(30, 30, 30);
         }
         #progressBars{
             flex-grow: 1;
@@ -29,15 +46,31 @@
             margin-top: 5px;
             margin-bottom: 5px;
         }
+        .progress.dark {
+            background: rgb(60, 60, 60);
+        }
+        .noselect {
+            -webkit-touch-callout: none; /* iOS Safari */
+            -webkit-user-select: none; /* Safari */
+            -khtml-user-select: none; /* Konqueror HTML */
+            -moz-user-select: none; /* Old versions of Firefox */
+            -ms-user-select: none; /* Internet Explorer/Edge */
+            user-select: none; /* Non-prefixed version, currently supported by Chrome, Edge, Opera and Firefox */
+        }        
+        #styleSwitchIcon {
+            display: inline-block;
+            cursor: pointer;
+        }
     </style>
   </head>
 
   <body>
 
     <div id="mainDiv">
-        <h1 style="display: inline-block;">Twitch Heatmap Chat</h1>
-        <a style="display: inline-block;" href="https://github.com/FDMX2/Twitch-Heatmap-Chat"><h5>?</h5></a>
-        <div  class="input-group mb-3">
+        <h1 style="display: inline-block;" class="noselect">Twitch Heatmap Chat</h1>
+        <a style="display: inline-block;" class="noselect" href="https://github.com/FDMX2/Twitch-Heatmap-Chat"><h5>?</h5></a>
+        <h5 id="styleSwitchIcon" class="noselect">☼</h5>
+        <div class="input-group mb-3">
             <input id="channelName" type="text" class="form-control" placeholder="Channel name" aria-describedby="basic-addon2">
             <div class="input-group-append">
                 <button id="switchConnection" class="btn btn-success" type="button">Connect</button>
@@ -59,13 +92,13 @@
 
     <!-- Templates -->
     <script id="template_progressbar" type="x-tmpl-mustache">
-        <div class="progress">
+        <div class="progress {{darkmode}}">
             <div class="progress-bar {{colorType}}" role="progressbar" style="width: {{percentage}}%" aria-valuenow="{{percentage}}" aria-valuemin="0" aria-valuemax="100">{{msg.amount}}</div>
         </div>
     </script>
 
     <script id="template_message" type="x-tmpl-mustache">
-        <div class="messageText">
+        <div class="messageText {{darkmode}}">
             {{msg.content}}
         </div>
     </script>
@@ -95,7 +128,7 @@
         var lastUpdateTime = null;
         var updateTimer = null;
         var templates = null;
-
+        var darkmode = true;
 
         $(document).ready(function(){
 
@@ -113,6 +146,7 @@
 
         $("body").on('click touch', "#switchConnection", switchConnection);
         $("body").on('click touch', "#clear", clearMessages);
+        $("body").on('click touch', "#styleSwitchIcon", switchDarkmode);
 
         function getClientOptions(channelName){
             var cnames = channelName.split(";");
@@ -207,7 +241,6 @@
 
         }
 
-
         function startRefresh(){
             updateTimer = window.setInterval(function(){
                 updateMessages();
@@ -225,7 +258,6 @@
         }
 
         function registerClientHandler(client){
-
             client.on('connected', handleConnect);
             client.on('disconnected', handleDisconnect);
             client.on('chat', handleMessage);
@@ -242,7 +274,6 @@
             client = new window.TwitchJS.client(getClientOptions(channel));
             registerClientHandler(client);
 
-
             console.log("connecting to channel " + channel);
 
             client.connect();
@@ -255,6 +286,25 @@
         function clearMessages(){
             bufferedMessages.clear();
             refreshGui([]);
+        }
+
+        function switchDarkmode(){
+            let cssValues = {
+                "background": "rgb(30, 30, 30)",
+                "color": "rgb(177, 212, 212)"
+            };
+            if(darkmode) {
+                $("#styleSwitchIcon").text("☽");
+                cssValues = {
+                    "background": "white",
+                    "color": "black"
+                };                
+            } else {
+                $("#styleSwitchIcon").text("☼");
+            }
+            $("body").css(cssValues);
+            $("#channelName").css(cssValues);
+            darkmode = !darkmode;
         }
 
         // clean up messagebuffer periodically (js is always threadsafe)
@@ -335,12 +385,12 @@
                 var con = {
                     "percentage" : percentage,
                     "colorType" : (i == 0 ? 'bg-danger' : 'bg-info'),
-                    "msg" : msg
+                    "msg" : msg,
+                    "darkmode" : darkmode ? "dark" : ""
                 }
 
                 contentBars += Mustache.render(templates.progessbar, con);
                 contentTexts += Mustache.render(templates.message, con);
-
             }
 
             $('#progressBars').html(contentBars);
