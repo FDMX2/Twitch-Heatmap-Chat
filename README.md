@@ -2,6 +2,7 @@
 Single file website to check check often used messages in a twitch chat
 <br>
 ## How it works:
+  0. Open the index.html after download or directy via https://fdmx2.github.io/Twitch-Heatmap-Chat/
   1. Enter the name of a twitch channel into the inputfield.
   2. Press connect.
   3. Wait till messages from the channels chat arrive and get sumed up.
