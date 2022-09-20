@@ -20,6 +20,22 @@ You can listen on multiple channels by seperating them with ; like:
 ```
 You can download the index.html and edit to change some presets.
 
+## Custom message source from websocket server:
+In addition to twitch you can also receive messages from other sources via a websocket server by using
+the following syntax as input:
+```
+  ws://ws_address|LIVESTREAM_URL
+```
+Again you can use one or more channels by separating them via ; like:
+```
+  ws://ws_address|LIVESTREAM_URL1;LIVESTREAM_URL2;LIVESTREAM_URL3
+```
+If your websocket runs on your local machine on port 13254 and you want to listen to the livechat of a youtube livestream:
+```
+  ws://127.0.0.1:13254|https://www.youtube.com/watch?v=VIDEOID
+```
+An example implementation of such a websocket server is the MessageForwarder (https://github.com/FDMX2/MessageForwarder).
+
 ## It uses:
   - bootstrap (https://getbootstrap.com/) for design 
   - twitch-js (https://github.com/twitch-devs/twitch-js/tree/master) for connection to twitch chat
