@@ -14,7 +14,7 @@
         body {
             background: rgb(30, 30, 30);
             color: rgb(177, 212, 212);
-        }        
+        }
         #mainDiv{
             width:100%;
             resize : horizontal;
@@ -124,6 +124,7 @@
         // variables
         var channel = '';
         var client = null;
+        var websocketClient = null;
         var bufferedMessages = new Map();
         var lastUpdateTime = null;
         var updateTimer = null;
@@ -167,7 +168,7 @@
         }
 
         function switchConnection(){
-            if(client){
+            if(client || websocketClient){
                 disconnectChat();
             } else {
                 connectChat();
@@ -199,7 +200,6 @@
                 }
             );
 
-
         }
 
         function handleConnect(address, port){
@@ -219,7 +219,8 @@
         }
 
         function handleDisconnect(address, port){
-            client.removeAllListeners();
+            if(client)
+                client.removeAllListeners();
             client = null;
 
             console.log("disconnected");
@@ -271,6 +272,12 @@
 
         function connectChat(){
             channel = $("#channelName").val();
+
+            if(channel.includes("|")){
+                connectToWs();
+                return;
+            }
+
             client = new window.TwitchJS.client(getClientOptions(channel));
             registerClientHandler(client);
 
@@ -280,7 +287,60 @@
         }
 
         function disconnectChat(){
-            client.disconnect();
+            if(client)
+                client.disconnect();
+            if(websocketClient){
+                websocketClient.close();
+                websocketClient = false;
+            }
+        }
+
+        function connectToWs(){
+            let parts = channel.split('|');
+            
+            let wsAddress = parts[0];
+            let targetPart = parts[1];
+
+            if(targetPart.includes(";")){
+                targetAddresses = targetPart.split(";");
+            } else {
+                targetAddresses = [targetPart];
+            }
+
+            websocketClient = new WebSocket(wsAddress);
+
+            websocketClient.onopen = function() {
+                for(targetAddress of targetAddresses){
+                    let registerjson = {};
+                    registerjson["com"] = "register";
+                    registerjson["val"] = targetAddress;
+                    
+                    websocketClient.send(JSON.stringify(registerjson));
+                }
+            };
+
+            websocketClient.onclose = function() {
+                websocketClient = false;
+                console.log("Disconnected websocket client");
+                handleDisconnect();
+            };
+
+            websocketClient.onmessage = function(e) {
+                let msg = JSON.parse(e.data);
+                if(msg.info){
+                    if(msg.info == "welcome")
+                        handleConnect();
+                    console.log(msg.info);
+                    return;
+                }
+
+                if(!msg.text){
+                    console.error("received invalid message via websocket connection: " + e.data);
+                    return;
+                }
+
+                handleMessage(channel, {'user-id':msg.author_id,'tmi-sent-ts':msg.timestamp}, msg.text);
+            };
         }
 
         function clearMessages(){
